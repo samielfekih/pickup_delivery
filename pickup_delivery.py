@@ -13,7 +13,7 @@ DataSet = namedtuple(
      'alpha', 'beta', 'gamma', 'compatible', 'distances', 'query_distances',
      'start_location_ids', 'end_location_ids', 'all_locations'))
 
-Solution = namedtuple('Solution', ('pickups', 'deliveries'))
+Solution = namedtuple('Solution', ('pickups', 'deliveries', 'dataset'))
 
 
 def _enrich_dataset(dataset):
@@ -112,7 +112,7 @@ def _initial_solution(dataset):
         possible_delivery_times[
             possible_arrival_times > dataset.trucks['end_t']] = np.nan
         if possible_delivery_times.isnull().values.all():
-            return Solution(pickup_times, delivery_times)
+            return Solution(pickup_times, delivery_times, dataset)
         first_query = possible_delivery_times.min().argmin()
         first_truck = possible_delivery_times.ix[:, first_query].idxmin()
         pickup_times.ix[
@@ -125,7 +125,7 @@ def _initial_solution(dataset):
         current_state.ix[first_truck, 'start_t'] = possible_delivery_times.ix[
             first_truck, first_query]
         current_state.ix[first_truck, 'current_location'] = first_query
-    return Solution(pickup_times, delivery_times)
+    return Solution(pickup_times, delivery_times, dataset)
 
 
 
