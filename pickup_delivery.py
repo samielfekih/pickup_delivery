@@ -58,6 +58,8 @@ def _compute_pickup_times(current_state, dataset):
         dataset.distances.ix[dataset.pickups.index,
                      current_state['current_location']]
         + current_state['start_t'].values).T
+    arrival_times[
+        dataset.compatible.ix[:, dataset.pickups.index] == 0] = np.nan
     arrival_times = np.maximum(arrival_times,
                                dataset.pickups['start'].values)
 

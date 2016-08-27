@@ -27,7 +27,7 @@ def _get_incompat_trucks(file_path, n_req, n_trucks):
                         file_path, i + 1, loc_id, row[9], len(compat_trucks)))
                 compat.ix[loc_id,:] = 0
                 compat.ix[loc_id, compat_trucks] = 1
-    return compat
+    return compat.T
 
 
 def read_data_file(file_path):
