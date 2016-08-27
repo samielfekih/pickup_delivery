@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from scipy.spatial.distance import pdist, squareform
 
-from utils import read_data_file
+from .utils import read_data_file
 
 
 DataSet = namedtuple(
@@ -87,7 +87,7 @@ def _compute_delivery_times(possible_pickup_times, dataset):
         return possible_delivery_times
 
 
-def _initial_solution(dataset):
+def initial_solution(dataset):
     dataset = _enrich_dataset(dataset)
     pickup_times = pd.DataFrame(
         index=dataset.trucks.index, columns=dataset.pickups.index)
