@@ -1,0 +1,46 @@
+This file describes the format of the data files containing the randomly generated PDPTW
+instances from the paper:
+
+S. Ropke, D. Pisinger, "An Adaptive Large Neighborhood Search Heuristic for the Pickup and Delivery Problem with Time Windows", Technical Report (2004), Department of Computer Science, University of Copenhagen, Denmark.
+
+The first line in each data file contains the following numbers:
+
+<Number of requests (n)>
+<Max number of vehicles (m)>
+<alpha>
+<beta>
+<gamma>
+
+Alpha, beta and gamma are described in the paper mentioned above. Alpha is the weight
+of the distance component in the objective, beta is the weight of the time component and gamma is the weight of the unserved requests component. In all files gamma is so big
+such that all requests should be served (and this is possible for all problems considered in the paper).
+
+Then follows 2n lines. Each line corresponds to one location used by a request. Each line contains the following information:
+
+<node id> 
+<x coordinate>
+<y coordinate>
+<demand (positive is pickup, negative is delivery)>
+<time window start>
+<time window end>
+<service time>
+<predecessor node id (-1 if the node is a pickup)>
+<successor node id (-1 if the node is a delivery)>
+<number of vehicles that can serve this node - this number is only given if the
+node is a pickup. The corresponding delivery can be served by the same vehicles. If the number is -1 then all vehicles can serve the node>
+
+If the node is a pickup node and it cannot be served by all vehicles, then a list of 
+vehicles ids follows. The ids indicate which vehicles that can serve the requests.
+
+After the lines describing the requests, m lines describing the vehicles follows. Each line contains the following numbers:
+
+<vehicle id>
+<start terminal x coordinate>
+<start terminal y coordinate>
+<end terminal x coordinate>
+<end terminal y coordinate>
+<vehicle capacity>
+<vehicle start time>
+<vehicle end time>
+
+Notice that distances are calculated as the euclidean distance and travel time between to vertices is set equal to the distance between the two vertices (that is, the vehicles travel with a speed of 1).
