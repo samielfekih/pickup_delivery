@@ -66,6 +66,7 @@ def _compute_pickup_times(current_state, dataset, update_trucks=None):
         dataset.distances.ix[dataset.pickups.index,
                      current_state['current_location']]
         + current_state['start_t'].values).T
+    arrival_times.index = update_trucks
     arrival_times[
         dataset.compatible.ix[update_trucks,
                               dataset.pickups.index] == 0] = np.nan
@@ -114,12 +115,11 @@ def _update_choices(possible_pickup_times,
     possible_delivery_times.ix[
         :, delivery_times.notnull().any(axis=0)] = np.nan
     possible_arrival_times = (
-        dataset.distances.ix[dataset.end_location_ids,
-                             dataset.deliveries.index]
-        + possible_delivery_times.values)
-
+        possible_delivery_times
+        + dataset.distances.ix[dataset.end_location_ids,
+                               dataset.deliveries.index].values)
     possible_delivery_times[
-        possible_arrival_times > dataset.trucks['end_t']] = np.nan
+        (possible_arrival_times.T > dataset.trucks['end_t']).T] = np.nan
     return (possible_pickup_times, possible_delivery_times,
             possible_arrival_times)
 
@@ -196,8 +196,8 @@ def check_solution(solution):
     assert deliveries.notnull().sum(axis=0).max() < 2
     assert (pickups.notnull().get_values()
             == deliveries.notnull().get_values()).all()
-    assert not (pickups.notnull().get_values() & ~(dataset.compatible.ix[
-        :, dataset.pickups.index].get_values())).any()
+    assert not (pickups.notnull().get_values() & (dataset.compatible.ix[
+        :, dataset.pickups.index].get_values() == 0)).any()
     assert (pickups >= dataset.pickups.start).get_values()[
         pickups.notnull().get_values()].all()
     assert (pickups + dataset.pickups.service_time
@@ -211,10 +211,11 @@ def check_solution(solution):
         pickups.notnull().get_values()].all()
     assert (deliveries >= dataset.deliveries.start).get_values()[
         pickups.notnull().get_values()].all()
-    assert ((deliveries + dataset.deliveries.service_time
+    assert (deliveries.get_values()
+            + dataset.deliveries.service_time.get_values()
             + dataset.distances.ix[dataset.end_location_ids,
-                                   dataset.deliveries.index].get_values()).T
-            <= dataset.trucks.end_t.get_values()).get_values().T[
+                                   dataset.deliveries.index].get_values()
+            <= dataset.trucks.end_t.get_values()[:,np.newaxis])[
                 pickups.notnull().get_values()].all()
 
 

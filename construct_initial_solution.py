@@ -5,7 +5,7 @@ import argparse
 from hashlib import sha1
 import random
 
-from pickup_delivery import initial_solution
+from pickup_delivery import initial_solution, check_solution
 
 
 parser = argparse.ArgumentParser(description='compute an initial solution')
@@ -25,8 +25,11 @@ delivery_file = os.path.join(
         sha1(u'{0}'.format(random.random()).encode('utf-8')).hexdigest()))
 
 solution = initial_solution(data_file)
+check_solution(solution)
+
 solution.pickups.to_csv(pickup_file)
 solution.deliveries.to_csv(delivery_file)
 
-print(u'{0} requests satisfied'.format(
-    solution.pickups.notnull().values.sum()))
+print(u'{0} out of {1} requests satisfied'.format(
+    solution.pickups.notnull().values.sum(),
+    solution.dataset.pickups.shape[0]))
