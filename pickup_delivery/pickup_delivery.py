@@ -1,3 +1,4 @@
+import sys
 from collections import namedtuple
 
 import numpy as np
@@ -23,8 +24,12 @@ def _enrich_dataset(dataset):
                           dataset.deliveries.index.max())
     start_location_ids = 1 + max_location_id + np.arange(
         dataset.trucks.shape[0])
-    end_location_ids = 1 + start_location_ids[-1] + np.arange(
+    start_location_ids = pd.Series(start_location_ids,
+                                   index=dataset.trucks.index)
+    end_location_ids = 1 + start_location_ids.iloc[-1] + np.arange(
         dataset.trucks.shape[0])
+    end_location_ids = pd.Series(end_location_ids,
+                                 index=dataset.trucks.index)
     start_locations = pd.DataFrame(
         dataset.trucks.ix[:, ('start_x', 'start_y')].values,
         index=start_location_ids, columns=('x', 'y'))
@@ -42,7 +47,7 @@ def _enrich_dataset(dataset):
     queries = pd.merge(dataset.pickups, dataset.deliveries,
                        left_on='successor_id', right_index=True,
                        suffixes=('_b', '_e'))
-    query_distances = pd.DataFrame(np.sqrt(
+    query_distances = pd.Series(np.sqrt(
         np.sum(
             (queries.ix[:, ('x_b', 'y_b')].values
              - queries.ix[:, ('x_e', 'y_e')].values)** 2, axis=1)),
@@ -53,13 +58,17 @@ def _enrich_dataset(dataset):
         end_location_ids, all_locations]))
 
 
-def _compute_pickup_times(current_state, dataset):
+def _compute_pickup_times(current_state, dataset, update_trucks=None):
+    if update_trucks is None:
+        update_trucks = dataset.trucks.index
+    current_state = current_state.ix[update_trucks, :]
     arrival_times = (
         dataset.distances.ix[dataset.pickups.index,
                      current_state['current_location']]
         + current_state['start_t'].values).T
     arrival_times[
-        dataset.compatible.ix[:, dataset.pickups.index] == 0] = np.nan
+        dataset.compatible.ix[update_trucks,
+                              dataset.pickups.index] == 0] = np.nan
     arrival_times = np.maximum(arrival_times,
                                dataset.pickups['start'].values)
 
@@ -68,26 +77,54 @@ def _compute_pickup_times(current_state, dataset):
         + dataset.pickups['service_time'].values)
     arrival_times[
         arrival_times > dataset.pickups['end']] = np.nan
-    arrival_times.index = dataset.trucks.index
+    arrival_times.index = update_trucks
     return arrival_times
 
 
-def _compute_delivery_times(possible_pickup_times, dataset):
-        possible_delivery_times = np.add(
-            possible_pickup_times,
-            dataset.query_distances.T)
-        possible_delivery_times = np.maximum(
-            possible_delivery_times, dataset.deliveries['start'].values)
-        possible_delivery_times = (
-            possible_delivery_times
-            + dataset.deliveries['service_time'].values)
-        possible_delivery_times.columns = dataset.deliveries.index
-        possible_delivery_times[
-            possible_delivery_times > dataset.deliveries['end']] = np.nan
-        return possible_delivery_times
+def _compute_delivery_times(possible_pickup_times, dataset,
+                           update_trucks=None):
+    if update_trucks is None:
+        update_trucks = dataset.trucks.index
+    possible_pickup_times = possible_pickup_times.ix[update_trucks, :]
+    possible_delivery_times = np.add(
+        possible_pickup_times,
+        dataset.query_distances.get_values())
+    possible_delivery_times = np.maximum(
+        possible_delivery_times, dataset.deliveries['start'].values)
+    possible_delivery_times = (
+        possible_delivery_times
+        + dataset.deliveries['service_time'].values)
+    possible_delivery_times.columns = dataset.deliveries.index
+    possible_delivery_times[
+        possible_delivery_times > dataset.deliveries['end']] = np.nan
+    return possible_delivery_times
 
 
-def initial_solution(dataset):
+def _update_choices(possible_pickup_times,
+                    possible_delivery_times,
+                    possible_arrival_times,
+                    delivery_times,
+                    current_state, dataset, update_trucks):
+
+    possible_pickup_times.ix[update_trucks, :] = _compute_pickup_times(
+        current_state, dataset, update_trucks=update_trucks)
+    possible_delivery_times.ix[
+        update_trucks, :] = _compute_delivery_times(
+        possible_pickup_times, dataset, update_trucks=update_trucks)
+    possible_delivery_times.ix[
+        :, delivery_times.notnull().any(axis=0)] = np.nan
+    possible_arrival_times = (
+        dataset.distances.ix[dataset.end_location_ids,
+                             dataset.deliveries.index]
+        + possible_delivery_times.values)
+
+    possible_delivery_times[
+        possible_arrival_times > dataset.trucks['end_t']] = np.nan
+    return (possible_pickup_times, possible_delivery_times,
+            possible_arrival_times)
+
+
+def _prepare_initial_solution_search(dataset):
     dataset = _enrich_dataset(dataset)
     pickup_times = pd.DataFrame(
         index=dataset.trucks.index, columns=dataset.pickups.index)
@@ -101,19 +138,32 @@ def initial_solution(dataset):
         index=dataset.trucks.index, columns=dataset.pickups.index)
     possible_delivery_times = pd.DataFrame(
         index=dataset.trucks.index, columns=dataset.deliveries.index)
+    possible_arrival_times = pd.DataFrame(
+        index=dataset.trucks.index, columns=dataset.pickups.index)
+    update_trucks = dataset.trucks.index
+    return (dataset, pickup_times, delivery_times, current_state,
+            possible_pickup_times, possible_delivery_times,
+            possible_arrival_times, update_trucks)
+
+
+def initial_solution(dataset):
+    print('computing initial solution')
+    (dataset, pickup_times, delivery_times, current_state,
+     possible_pickup_times, possible_delivery_times, possible_arrival_times,
+     update_trucks) = _prepare_initial_solution_search(dataset)
+    n_digits = int(np.ceil(np.log10(dataset.pickups.shape[0])))
+
     for i in range(dataset.pickups.shape[0]):
-        possible_pickup_times = _compute_pickup_times(current_state, dataset)
-        possible_delivery_times = _compute_delivery_times(
-            possible_pickup_times, dataset)
-        possible_delivery_times.ix[
-            :, delivery_times.notnull().any(axis=0)] = np.nan
-        possible_arrival_times = (
-            dataset.distances.ix[dataset.end_location_ids,
-                                 dataset.deliveries.index]
-            + possible_delivery_times.values)
-        possible_delivery_times[
-            possible_arrival_times > dataset.trucks['end_t']] = np.nan
+        (possible_pickup_times, possible_delivery_times,
+         possible_arrival_times) = _update_choices(
+         possible_pickup_times, possible_delivery_times,
+         possible_arrival_times,
+         delivery_times, current_state, dataset, update_trucks)
+
         if possible_delivery_times.isnull().values.all():
+            pickup_times -= dataset.pickups.service_time
+            delivery_times -= dataset.deliveries.service_time
+            print()
             return Solution(pickup_times, delivery_times, dataset)
         first_query = possible_delivery_times.min().argmin()
         first_truck = possible_delivery_times.ix[:, first_query].idxmin()
@@ -127,7 +177,46 @@ def initial_solution(dataset):
         current_state.ix[first_truck, 'start_t'] = possible_delivery_times.ix[
             first_truck, first_query]
         current_state.ix[first_truck, 'current_location'] = first_query
+        update_trucks = [first_truck]
+        sys.stdout.write('\rassigned {{:<{}}} jobs'.format(
+            n_digits).format(i + 1))
+        sys.stdout.flush()
+    pickup_times -= dataset.pickups.service_time
+    delivery_times -= dataset.deliveries.service_time
+    print()
     return Solution(pickup_times, delivery_times, dataset)
+
+
+def check_solution(solution):
+    # TODO: to complete
+    pickups = solution.pickups
+    deliveries = solution.deliveries
+    dataset = solution.dataset
+    assert pickups.notnull().sum(axis=0).max() < 2
+    assert deliveries.notnull().sum(axis=0).max() < 2
+    assert (pickups.notnull().get_values()
+            == deliveries.notnull().get_values()).all()
+    assert not (pickups.notnull().get_values() & ~(dataset.compatible.ix[
+        :, dataset.pickups.index].get_values())).any()
+    assert (pickups >= dataset.pickups.start).get_values()[
+        pickups.notnull().get_values()].all()
+    assert (pickups + dataset.pickups.service_time
+            <= dataset.pickups.end).get_values()[
+                pickups.notnull().get_values()].all()
+    assert (pickups + dataset.pickups.service_time + dataset.query_distances
+            + dataset.deliveries.service_time.get_values()
+            <= dataset.deliveries.end.get_values()).get_values()[
+                pickups.notnull().get_values()].all()
+    assert (pickups >= dataset.pickups.start).get_values()[
+        pickups.notnull().get_values()].all()
+    assert (deliveries >= dataset.deliveries.start).get_values()[
+        pickups.notnull().get_values()].all()
+    assert ((deliveries + dataset.deliveries.service_time
+            + dataset.distances.ix[dataset.end_location_ids,
+                                   dataset.deliveries.index].get_values()).T
+            <= dataset.trucks.end_t.get_values()).get_values().T[
+                pickups.notnull().get_values()].all()
+
 
 
 
