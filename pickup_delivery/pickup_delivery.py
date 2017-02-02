@@ -251,22 +251,32 @@ def req_dist(solution, phi=9., chi=3., psi=2., omega=1):
         psi*demand_diff + omega * (1 - intersection_card/min_card))
 
 
-# def shaw_removal(solution, n_updated, power=2):
-#     seed_request = np.random.randint(solution.shape[1])
-#     to_remove = [seed_request]
-#     while len(to_remove) < n_updated:
-#         picked_index = np.random.randint(len(to_remove))
-#         picked = to_remove[picked_index]
-#         remaining = 'requests in s (not n to_remove)'
-#         distances = req_dist(picked, remaining)
-#         order = np.argsort(distances)
-#         seed = np.random.rand()
-#         seed = np.power(seed, power)
-#         seed = np.floor(seed * len(to_remove))
-#         new_removed = remaining[order[seed]]
-#         to_remove.append(new_removed)
+def shaw_removal(solution, n_updated, power=2):
 
-#     return solution, to_remove
+    remaining_requests = solution.pickups.notnull().sum()
+    remaining_requests = remaining_requests[remaining_requests == 1].index
+    seed_request = np.random.randint(len(remaining_requests))
+
+    relatedness = req_dist(solution)
+
+    to_remove = [remaining_requests[seed_request]]
+    remaining_requests = remaining_requests.drop(remaining_requests[seed_request])
+
+    while len(to_remove) < n_updated:
+        picked_index = np.random.randint(len(to_remove))
+        picked = to_remove[picked_index]
+
+
+        related = relatedness.ix[picked]
+        related = related[related.index.isin(remaining_requests)]
+        order = np.argsort(related.values)
+        seed = np.random.rand()
+        seed = np.power(seed, power)
+        seed = np.floor(seed * len(remaining_requests))
+        new_removed = remaining_requests[order[seed]]
+        to_remove.append(new_removed)
+        remaining_requests = remaining_requests.drop(remaining_requests[order[seed]])
+    return to_remove
 
 
 # def lns_heuristic(initial_solution, n_updated=10):
