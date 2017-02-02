@@ -178,12 +178,11 @@ def initial_solution(dataset):
             first_truck, first_query]
         current_state.ix[first_truck, 'current_location'] = first_query
         update_trucks = [first_truck]
-        sys.stdout.write('\rassigned {{:<{}}} jobs'.format(
-            n_digits).format(i + 1))
-        sys.stdout.flush()
+        # sys.stdout.write('\rassigned {{:<{}}} jobs'.format(n_digits).format(i + 1))
+        # sys.stdout.flush()
     pickup_times -= dataset.pickups.service_time
     delivery_times -= dataset.deliveries.service_time
-    print()
+    # print()
     return Solution(pickup_times, delivery_times, dataset)
 
 
@@ -219,6 +218,55 @@ def check_solution(solution):
                 pickups.notnull().get_values()].all()
 
 
+def req_dist(solution, phi=9., chi=3., psi=2., omega=1):
+    pickups_distances = solution.dataset.distances.ix[solution.pickups.columns,
+        solution.pickups.columns]
+    deliveries_distances = solution.dataset.distances.ix[solution.deliveries.columns,
+        solution.deliveries.columns]
+    deliveries_distances.index = solution.dataset.deliveries.predecessor_id
+    deliveries_distances.columns = solution.dataset.deliveries.predecessor_id
+
+    pickups_times = solution.pickups.fillna(0).sum()
+    pickups_time_diff = np.abs(pickups_times.values - pickups_times.values[:,np.newaxis])
+    pickups_time_diff = pd.DataFrame(pickups_time_diff, index=solution.pickups.columns, 
+        columns=solution.pickups.columns)
+
+    deliveries_times = solution.deliveries.fillna(0).sum()
+    deliveries_time_diff = np.abs(deliveries_times.values - deliveries_times.values[:,np.newaxis])
+    deliveries_time_diff = pd.DataFrame(deliveries_time_diff, index=solution.dataset.deliveries.predecessor_id, 
+        columns=solution.dataset.deliveries.predecessor_id)
+
+    demand_diff = pd.DataFrame(np.abs(solution.dataset.pickups.demand.values - 
+        solution.dataset.pickups.demand.values[:,np.newaxis]),index=solution.pickups.columns,
+        columns = solution.pickups.columns)
+
+    pickups_comptible = solution.dataset.compatible.ix[:, solution.pickups.columns]
+    intersection_card = pickups_comptible.T.dot(pickups_comptible)
+    card_compatible = pickups_comptible.sum()
+    min_card = pd.DataFrame(-np.abs(card_compatible.values - card_compatible.values[:, np.newaxis])
+        + card_compatible.values + card_compatible.values[:, np.newaxis],index=solution.pickups.columns,
+        columns=solution.pickups.columns)/2
+
+    return (phi*(pickups_distances + deliveries_distances) + chi *(pickups_time_diff+deliveries_time_diff) +
+        psi*demand_diff + omega * (1 - intersection_card/min_card))
+
+
+# def shaw_removal(solution, n_updated, power=2):
+#     seed_request = np.random.randint(solution.shape[1])
+#     to_remove = [seed_request]
+#     while len(to_remove) < n_updated:
+#         picked_index = np.random.randint(len(to_remove))
+#         picked = to_remove[picked_index]
+#         remaining = 'requests in s (not n to_remove)'
+#         distances = req_dist(picked, remaining)
+#         order = np.argsort(distances)
+#         seed = np.random.rand()
+#         seed = np.power(seed, power)
+#         seed = np.floor(seed * len(to_remove))
+#         new_removed = remaining[order[seed]]
+#         to_remove.append(new_removed)
+
+#     return solution, to_remove
 
 
 # def lns_heuristic(initial_solution, n_updated=10):
